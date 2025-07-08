@@ -25,13 +25,14 @@ const pool = mysql.createPool({
 });
 
 // Conectar a la base de datos
-pool.getConnection((err) => {
+pool.query('SELECT 1', (err) => {
   if (err) {
     console.error('Error conectando a la base de datos:', err);
-    return;
+  } else {
+    console.log('Conexión MySQL verificada');
   }
-  console.log('Conectado a la base de datos MySQL');
 });
+
 
 //-------------------------------------------------------------------------------------------
 // Ruta para obtener los grados específicos de un grado
