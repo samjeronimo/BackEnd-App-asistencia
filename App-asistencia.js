@@ -11,40 +11,27 @@ app.use(cors(corsConfig()));
 app.use(express.json());  // Para poder manejar JSON en las solicitudes
 
 // Configuración de la conexión a MySQL
-const connection = mysql.createConnection({
+const pool = mysql.createPool({
   host: 'btabo9fmg623iuttzdn2-mysql.services.clever-cloud.com',
   user: 'udov88atyxwjvyo9',
   password: 'RtiWcg5Rjeb1BRzoQJOa',
   database: 'btabo9fmg623iuttzdn2',
   port: 3306,
-  connectionLimit: 10, // Limitar el número de conexiones simultáneas
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
 });
 
 
+
 // Conectar a la base de datos
-connection.connect((err) => {
+pool.connect((err) => {
   if (err) {
     console.error('Error conectando a la base de datos:', err);
     return;
   }
   console.log('Conectado a la base de datos MySQL');
 });
-
-//--------------------------------------------------------------------------------------------
-
-// Ruta para obtener los grados
-app.get('/grados', (req, res) => {
-  const query = 'SELECT * FROM grados';
-  connection.query(query, (err, results) => {
-    if (err) {
-      console.error('Error ejecutando la consulta:', err);
-      res.status(500).send('Error en el servidor');
-      return;
-    }
-    res.json(results);
-  });
-});
-
 
 //-------------------------------------------------------------------------------------------
 // Ruta para obtener los grados específicos de un grado
@@ -62,7 +49,7 @@ app.get('/grados-especificos/:id_grado', (req, res) => {
       WHERE id_grado = ?
   `;
 
-  connection.query(query, [idGrado], (err, results) => {
+  pool.query(query, [idGrado], (err, results) => {
       if (err) {
           console.error('Error ejecutando la consulta:', err);
           return res.status(500).json({ error: 'Error en el servidor' });
@@ -73,30 +60,20 @@ app.get('/grados-especificos/:id_grado', (req, res) => {
 
 //-----------------------------------------------------------------------------------------------
 
-// En tu backend (server.js)
-app.get('/verificar-asistencia/:idGrado/:fecha', (req, res) => {
-  const { idGrado, fecha } = req.params;
-  
-  const query = `
-      SELECT COUNT(*) as count 
-      FROM asistencia 
-      WHERE id_alumno IN (
-          SELECT id_alumno FROM alumnos 
-          WHERE id_grado = ? OR id_grado_especifico = ?
-      ) 
-      AND fecha = ?
-  `;
-  
-  connection.query(query, [idGrado, idGrado, fecha], (err, results) => {
-      if (err) {
-          return res.status(500).json({ error: err.message });
-      }
-      res.json({ tieneAsistencia: results[0].count > 0 });
+// Ruta para obtener los grados
+app.get('/grados', (req, res) => {
+  const query = 'SELECT * FROM grados';
+  pool.query(query, (err, results) => {
+    if (err) {
+      console.error('Error ejecutando la consulta:', err);
+      res.status(500).send('Error en el servidor');
+      return;
+    }
+    res.json(results);
   });
 });
 
 //-----------------------------------------------------------------------------------------------
-
 
 // En tu archivo App-asistencia.js o similar
 app.get('/asistencia/grados', (req, res) => {
@@ -114,7 +91,7 @@ app.get('/asistencia/grados', (req, res) => {
       FIELD(g.nombre, 'Pre-Kinder', 'Kinder', 'Prepa', 'Primaria menor', 'Primaria mayor', 'Básicos', 'Diversificado');
   `;
   
-  connection.query(sql, (err, resultado) => {
+  pool.query(sql, (err, resultado) => {
       if (err) {
           console.error('Error al obtener datos:', err);
           return res.status(500).json({ error: 'Error al obtener datos' });
@@ -124,7 +101,6 @@ app.get('/asistencia/grados', (req, res) => {
   });
 });
 
-
 //-----------------------------------------------------------------------------------------------
 
 // Agrega esto ANTES de tus rutas
@@ -133,7 +109,6 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
   next();
 });
-
 
 // Endpoint para obtener alumnos por subgrado específico
 app.get('/asistencia/alumnos-subgrado/:id_grado_especifico', (req, res) => {
@@ -165,7 +140,7 @@ app.get('/asistencia/alumnos-subgrado/:id_grado_especifico', (req, res) => {
       ORDER BY al.apellido, al.nombre;
   `;
   
-  connection.query(sql, [id_grado_especifico], (err, resultado) => {
+  pool.query(sql, [id_grado_especifico], (err, resultado) => {
       if (err) {
           console.error('Error en la consulta SQL:', err);
           return res.status(500).json({
@@ -185,12 +160,35 @@ app.get('/asistencia/alumnos-subgrado/:id_grado_especifico', (req, res) => {
   });
 });
 
+//-----------------------------------------------------------------------------------------------
 
-//-------------------------------------------------------------------------------------------------
+// En tu backend (server.js)
+app.get('/verificar-asistencia/:idGrado/:fecha', (req, res) => {
+  const { idGrado, fecha } = req.params;
+  
+  const query = `
+      SELECT COUNT(*) as count 
+      FROM asistencia 
+      WHERE id_alumno IN (
+          SELECT id_alumno FROM alumnos 
+          WHERE id_grado = ? OR id_grado_especifico = ?
+      ) 
+      AND fecha = ?
+  `;
+  
+  pool.query(query, [idGrado, idGrado, fecha], (err, results) => {
+      if (err) {
+          return res.status(500).json({ error: err.message });
+      }
+      res.json({ tieneAsistencia: results[0].count > 0 });
+  });
+});
+
+//-----------------------------------------------------------------------------------------------
 
 app.get('/api/profesores', async (req, res) => {
   try {
-      const [result] = await connection.promise().query('SELECT * FROM profesores');
+      const [result] = await pool.promise().query('SELECT * FROM profesores');
       res.json(result);
   } catch (error) {
       console.error('Error al obtener profesores:', error);
@@ -207,7 +205,7 @@ app.post('/api/validar-password', (req, res) => {
     return res.status(400).json({ valid: false, message: 'Faltan datos.' });
   }
 
-  connection.query('SELECT contrasena FROM Administradores WHERE correo = ?', [correo], (err, results) => {
+  pool.query('SELECT contrasena FROM Administradores WHERE correo = ?', [correo], (err, results) => {
     if (err) {
       console.error('Error en la consulta:', err);
       return res.status(500).json({ valid: false, message: 'Error del servidor.' });
@@ -228,7 +226,6 @@ app.post('/api/validar-password', (req, res) => {
   });
 });
 
-
 //-------------------------------------------------------------------------------------------------
 
 app.delete('/profesores/:id', (req, res) => {
@@ -242,7 +239,7 @@ app.delete('/profesores/:id', (req, res) => {
   // Cambiar 'id' por 'id_profesor'
   const sql = 'DELETE FROM profesores WHERE id_profesor = ?';
 
-  connection.query(sql, [id], (err, resultado) => {
+  pool.query(sql, [id], (err, resultado) => {
     if (err) {
       console.error('Error al eliminar profesor:', err);
       return res.status(500).json({ mensaje: 'Error al eliminar profesor' });
@@ -270,7 +267,7 @@ app.post('/appi/crear-profesor', async (req, res) => {
 
   try {
       const sql = 'INSERT INTO profesores (nombre, email, password) VALUES (?, ?, ?)';
-      const result = await connection.execute(sql, [nombre, correo, password]);
+      const result = await pool.execute(sql, [nombre, correo, password]);
 
       res.status(201).json({ message: 'Profesor agregado correctamente', id: result.insertId });
   } catch (error) {
@@ -278,7 +275,6 @@ app.post('/appi/crear-profesor', async (req, res) => {
       res.status(500).json({ message: 'Error al insertar el profesor en la base de datos.' });
   }
 });
-
 
 //-------------------------------------------------------------------------------------------------
 
@@ -290,7 +286,7 @@ app.get('/grados/lista', (req, res) => {
       ORDER BY nombre;
   `;
   
-  connection.query(sql, (err, resultado) => {
+  pool.query(sql, (err, resultado) => {
       if (err) {
           console.error('Error al obtener grados:', err);
           return res.status(500).json({ 
@@ -330,7 +326,7 @@ app.get('/grados-especificos/lista/:id_grado', (req, res) => {
       ORDER BY nombre;
   `;
   
-  connection.query(sql, [id_grado], (err, resultado) => {
+  pool.query(sql, [id_grado], (err, resultado) => {
       if (err) {
           console.error('Error en la consulta SQL:', err);
           return res.status(500).json({ 
@@ -351,8 +347,6 @@ app.get('/grados-especificos/lista/:id_grado', (req, res) => {
   });
 });
 
-
-
 //-------------------------------------------------------------------------------------------------
 
 // Modifica la ruta /asistencia/alumno/:id_alumno para incluir reportes
@@ -361,7 +355,7 @@ app.get('/asistencia/alumno/:id_alumno', async (req, res) => {
 
   try {
     // 1. Datos de asistencia
-    const [asistencia] = await connection.promise().query({
+    const [asistencia] = await pool.promise().query({
       sql: `
         SELECT estado, COUNT(*) as cantidad 
         FROM asistencia 
@@ -371,13 +365,13 @@ app.get('/asistencia/alumno/:id_alumno', async (req, res) => {
     });
   
     // 2. Info del alumno
-    const [alumno] = await connection.promise().query(
+    const [alumno] = await pool.promise().query(
       `SELECT id_alumno, nombre, apellido FROM alumnos WHERE id_alumno = ?`,
       [id_alumno]
     );
   
     // 3. Datos de reportes (si los necesitas)
-    const [reportes] = await connection.promise().query(
+    const [reportes] = await pool.promise().query(
       `SELECT tipo, COUNT(*) as total 
        FROM reportes 
        WHERE id_alumno = ? 
@@ -415,7 +409,6 @@ app.get('/asistencia/alumno/:id_alumno', async (req, res) => {
 
 //-------------------------------------------------------------------------------------------------
 
-
 // Ruta para verificar si un grado tiene subgrados
 app.get('/grado-tiene-subgrados/:id_grado', (req, res) => {
   const idGrado = req.params.id_grado;
@@ -438,7 +431,7 @@ app.post('/agregar-alumno', (req, res) => {
       VALUES (?, ?, ?, ?, ?)
   `;
   
-  connection.query(query, 
+  pool.query(query, 
       [nombre, apellido, edad, correo, id_grado_especifico], 
       (err, results) => {
           if (err) {
@@ -475,7 +468,7 @@ app.get('/alumnos-por-grado/:id_grado', (req, res) => {
     `;
   }
 
-  connection.query(query, [idGrado], (err, results) => {
+  pool.query(query, [idGrado], (err, results) => {
     if (err) {
       console.error('Error ejecutando la consulta:', err);
       return res.status(500).json({ 
@@ -504,7 +497,6 @@ app.get('/alumnos-por-grado/:id_grado', (req, res) => {
 
 //---------------------------------------------------------------------------------------------
 
-
 // Ruta para registrar la asistencia
 app.post('/registrar-asistencia', (req, res) => {
   const asistencias = req.body;
@@ -521,7 +513,7 @@ app.post('/registrar-asistencia', (req, res) => {
       ON DUPLICATE KEY UPDATE estado = VALUES(estado)
   `;
   
-  connection.query(query, [valores], (err, results) => {
+  pool.query(query, [valores], (err, results) => {
       if (err) {
           console.error('Error al guardar la asistencia:', err);
           return res.status(500).json({ error: 'Error al guardar la asistencia' });
@@ -537,7 +529,7 @@ app.post('/registrar-asistencia', (req, res) => {
 app.delete('/eliminar-alumno/:id', (req, res) => {
   const id = req.params.id;
 
-  connection.query('DELETE FROM alumnos WHERE id_alumno = ?', [id], (err, results) => {
+  pool.query('DELETE FROM alumnos WHERE id_alumno = ?', [id], (err, results) => {
     if (err) {
       console.error('Error eliminando alumno:', err);
       return res.status(500).json({ error: 'Error al eliminar alumno' });
@@ -574,7 +566,7 @@ app.post('/reportes/registrar', async (req, res) => {
 
   try {
     // 1. Guardar en base de datos
-    const [result] = await connection.promise().query(
+    const [result] = await pool.promise().query(
       `INSERT INTO reportes 
        (id_alumno, id_profesor, tipo, prendas, mensaje) 
        VALUES (?, ?, ?, ?, ?)`,
@@ -588,7 +580,7 @@ app.post('/reportes/registrar', async (req, res) => {
     );
 
     // 2. Obtener el correo del alumno
-    const [alumnoRows] = await connection.promise().query(
+    const [alumnoRows] = await pool.promise().query(
       `SELECT correo_institucional FROM alumnos WHERE id_alumno = ?`,
       [id_alumno]
     );
@@ -642,7 +634,7 @@ app.post('/verificar-contrasena', async (req, res) => {
 
   try {
     // 1. Primero verifica si el profesor existe
-    const [profesores] = await connection.promise().query(
+    const [profesores] = await pool.promise().query(
       'SELECT * FROM profesores WHERE nombre = ? LIMIT 1', 
       [nombre]
     );
@@ -692,7 +684,6 @@ app.post('/verificar-contrasena', async (req, res) => {
   }
 });
 
-
 //------------------------------------------------------------------------------------------------------------------
 
 // Ruta para el login del profesor
@@ -703,7 +694,7 @@ app.post('/login', (req, res) => {
     return res.status(400).json({ message: 'Por favor, complete todos los campos.' });
   }
 
-  connection.query('SELECT * FROM profesores WHERE nombre = ?', [nombre], (err, results) => {
+  pool.query('SELECT * FROM profesores WHERE nombre = ?', [nombre], (err, results) => {
     if (err) return res.status(500).json({ message: 'Error en el servidor.' });
 
     if (results.length === 0) {
@@ -720,7 +711,6 @@ app.post('/login', (req, res) => {
   });
 });
 
-
 //--------------------------------------------------------------------------------------------------
 
 // Ruta para registrar un profesor
@@ -732,7 +722,7 @@ app.post('/registrar', (req, res) => {
   }
 
   // Verificar si el profesor ya existe
-  connection.query('SELECT * FROM profesores WHERE email = ?', [email], (err, results) => {
+  pool.query('SELECT * FROM profesores WHERE email = ?', [email], (err, results) => {
     if (err) return res.status(500).json({ message: 'Error en el servidor.' });
 
     if (results.length > 0) {
@@ -741,13 +731,12 @@ app.post('/registrar', (req, res) => {
 
     // Guardar la contraseña sin encriptar
     const query = 'INSERT INTO profesores (email, password, nombre) VALUES (?, ?, ?)';
-    connection.query(query, [email, password, nombre], (err, results) => {
+    pool.query(query, [email, password, nombre], (err, results) => {
       if (err) return res.status(500).json({ message: 'Error al registrar el profesor.' });
       res.status(201).json({ message: 'Profesor registrado exitosamente.' });
     });
   });
 });
-
 
 //------------------------------------------------------------------------------------------------------------------
 
@@ -759,7 +748,7 @@ app.post('/login-admin', (req, res) => {
     return res.status(400).json({ message: 'Por favor, complete todos los campos.' });
   }
 
-  connection.query('SELECT * FROM Administradores WHERE correo = ?', [correo], (err, results) => {
+  pool.query('SELECT * FROM Administradores WHERE correo = ?', [correo], (err, results) => {
     if (err) return res.status(500).json({ message: 'Error en el servidor.' });
 
     if (results.length === 0) {
@@ -776,7 +765,6 @@ app.post('/login-admin', (req, res) => {
   });
 });
 
-
 //------------------------------------------------------------------------------------------------------------------
 
 // Ruta para registrar un administrador
@@ -788,7 +776,7 @@ app.post('/registrar-admin', (req, res) => {
   }
 
   // Verificar si el administrador ya existe
-  connection.query('SELECT * FROM Administradores WHERE correo = ?', [correo], (err, results) => {
+  pool.query('SELECT * FROM Administradores WHERE correo = ?', [correo], (err, results) => {
     if (err) return res.status(500).json({ message: 'Error en el servidor.' });
 
     if (results.length > 0) {
@@ -797,7 +785,7 @@ app.post('/registrar-admin', (req, res) => {
 
     // Insertar nuevo administrador
     const query = 'INSERT INTO Administradores (correo, contrasena, nombre) VALUES (?, ?, ?)';
-    connection.query(query, [correo, contrasena, nombre], (err, results) => {
+    pool.query(query, [correo, contrasena, nombre], (err, results) => {
       if (err) return res.status(500).json({ message: 'Error al registrar al administrador.' });
       res.status(201).json({ message: 'Administrador registrado exitosamente.' });
     });
@@ -860,7 +848,7 @@ app.post('/verificar-codigo', async (req, res) => {
 
   try {
     // Obtener la contraseña del profesor
-    const [rows] = await connection.promise().query(
+    const [rows] = await pool.promise().query(
       'SELECT password FROM profesores WHERE email = ?',
       [correo]
     );
@@ -897,7 +885,6 @@ app.post('/verificar-codigo', async (req, res) => {
     res.status(500).json({ success: false, message: 'Error al enviar la contraseña.' });
   }
 });
-
 
 //-----------------------------------------------------------------------------------------------
 
@@ -1035,7 +1022,6 @@ app.post('/enviar-mensaje-general', async (req, res) => {
     });
   }
 });
-
 
 //-----------------------------------------------------------------------------------------------
 
