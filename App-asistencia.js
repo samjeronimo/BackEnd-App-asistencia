@@ -1,13 +1,15 @@
 const express = require('express');
 const nodemailer = require('nodemailer');
 const mysql = require('mysql2');
+const bcrypt = require('bcryptjs');
 const cors = require('cors');
-const bcrypt = require('bcryptjs'); // Importar bcrypt para encriptar contraseñas
-const corsConfig = require('./cors'); // Importar configuración de CORS si la tienes en un archivo separado
+const corsSetup = require('./cors'); // Esta es la función que recibe app
+
 const app = express();
 
-// Configuración de CORS
-app.use(cors(corsConfig()));
+// Configuración de CORS (llama la función que está en cors.js y le pasa app)
+corsSetup(app);
+
 app.use(express.json());  // Para poder manejar JSON en las solicitudes
 
 // Configuración de la conexión a MySQL
@@ -22,10 +24,8 @@ const pool = mysql.createPool({
   queueLimit: 0
 });
 
-
-
 // Conectar a la base de datos
-pool.connect((err) => {
+pool.getConnection((err) => {
   if (err) {
     console.error('Error conectando a la base de datos:', err);
     return;
