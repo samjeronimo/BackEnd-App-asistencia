@@ -3,20 +3,21 @@ const nodemailer = require('nodemailer');
 const mysql = require('mysql2');
 const cors = require('cors');
 const bcrypt = require('bcryptjs'); // Importar bcrypt para encriptar contraseñas
-
+const corsConfig = require('./cors'); // Importar configuración de CORS si la tienes en un archivo separado
 const app = express();
-const port = 3000;
 
 // Configuración de CORS
-app.use(cors());
+app.use(cors(corsConfig()));
 app.use(express.json());  // Para poder manejar JSON en las solicitudes
 
 // Configuración de la conexión a MySQL
 const connection = mysql.createConnection({
-  host: 'localhost',
-  user: 'root',
-  password: 'Sajeronimo2008_:)',
-  database: 'examen_asistencia_2025'
+  host: 'btabo9fmg623iuttzdn2-mysql.services.clever-cloud.com',
+  user: 'udov88atyxwjvyo9',
+  password: 'RtiWcg5Rjeb1BRzoQJOa',
+  database: 'btabo9fmg623iuttzdn2',
+  port: 3306,
+  connectionLimit: 10, // Limitar el número de conexiones simultáneas
 });
 
 
@@ -1038,7 +1039,9 @@ app.post('/enviar-mensaje-general', async (req, res) => {
 
 //-----------------------------------------------------------------------------------------------
 
+const PORT = process.env.PORT || 3000;
+
 // Iniciar el servidor
-app.listen(port, () => {
-  console.log(`Servidor corriendo en http://localhost:${port}`);
+app.listen(PORT, () => {
+  console.log(`Servidor corriendo en ${PORT}`);
 });
