@@ -582,7 +582,7 @@ app.post('/reportes/registrar', async (req, res) => {
 
     // 2. Obtener el correo del alumno
     const [alumnoRows] = await pool.promise().query(
-      `SELECT correo_institucional FROM alumnos WHERE id_alumno = ?`,
+      `SELECT correo_institucional FROM alumnos WHERE id = ?`,
       [id_alumno]
     );
       
@@ -592,23 +592,33 @@ app.post('/reportes/registrar', async (req, res) => {
 
     const correoAlumno = alumnoRows[0].correo_institucional;
 
-    // 3. Intentar enviar correo (pero no fallar si hay error)
+    if (!correoAlumno || !correoAlumno.includes('@')) {
+      console.warn(`Correo inválido para el alumno con id ${id_alumno}:`, correoAlumno);
+      return res.json({
+        success: true,
+        message: 'Reporte registrado, pero el alumno no tiene un correo válido',
+        id_reporte: result.insertId,
+        warning: 'Correo no válido'
+      });
+    }
+    
     try {
       await enviarCorreo(correoAlumno, prendas, mensaje);
-      return res.json({ 
+      return res.json({
         success: true,
         message: 'Reporte registrado y correo enviado correctamente',
         id_reporte: result.insertId
       });
     } catch (emailError) {
       console.error('Error al enviar correo:', emailError);
-      return res.json({ 
+      return res.json({
         success: true,
         message: 'Reporte registrado, pero hubo un problema al enviar el correo',
         id_reporte: result.insertId,
         warning: emailError.message
       });
     }
+    
 
   } catch (error) {
     console.error('Error al registrar reporte:', error);
